@@ -1,9 +1,9 @@
 import { FCTYPE } from "./Constants";
-export declare type AnyMessage = FCTypeLoginResponse | FCTypeSlaveVShareResponse | FCTypeTagsResponse | FCTokenIncResponse | RoomDataMessage | ExtDataMessage | ManageListMessage | BookmarksMessage | Message;
+export declare type AnyMessage = FCTypeLoginResponse | FCTypeSlaveVShareResponse | FCTypeTagsResponse | FCTokenIncResponse | RoomDataMessage | ExtDataMessage | ManageListMessage | BookmarksMessage | RoomDataUserCountObjectMessage | RoomDataUserCountArrayMessage | Message;
 export declare type FCTypeLoginResponse = string;
 export declare type FCTypeSlaveVShareResponse = number[];
 export interface FCTypeTagsResponse {
-    [index: number]: string[];
+    [index: string]: string[];
 }
 export interface FCTokenIncResponse {
     ch: number;
@@ -22,6 +22,10 @@ export interface RoomDataMessage {
     topic: string;
     total: number;
 }
+export interface RoomDataUserCountObjectMessage {
+    [index: string]: number;
+}
+export declare type RoomDataUserCountArrayMessage = number[];
 export interface ExtDataMessage {
     msg: {
         arg1: number;

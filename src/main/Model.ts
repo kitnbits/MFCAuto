@@ -84,7 +84,7 @@ export class Model implements EventEmitter {
 
     // Retrieves a specific model instance by user id from knownModels, creating
     // the model instance if it does not already exist.
-    public static getModel(id: any, createIfNecessary: boolean = true): Model | undefined {
+    public static getModel(id: string | number, createIfNecessary: boolean = true): Model | undefined {
         if (typeof id === "string") { id = parseInt(id); }
         if (Model.knownModels.has(id)) {
             return Model.knownModels.get(id);

@@ -11,6 +11,8 @@ export declare class Client implements EventEmitter {
     private choseToLogIn;
     private completedModels;
     private useWebSockets;
+    private camYou;
+    private baseUrl;
     private serverConfig;
     private streamBuffer;
     private streamWebSocketBuffer;
@@ -28,7 +30,10 @@ export declare class Client implements EventEmitter {
     private static initialReconnectSeconds;
     private static maximumReconnectSeconds;
     private static currentReconnectSeconds;
-    constructor(username?: string, password?: string, useWebSockets?: boolean);
+    constructor(username?: string, password?: string, options?: boolean | {
+        useWebSockets?: boolean;
+        camYou?: boolean;
+    });
     addListener: (event: string, listener: ClientEventCallback) => this;
     on: (event: string, listener: ClientEventCallback) => this;
     once: (event: string, listener: ClientEventCallback) => this;
@@ -56,7 +61,7 @@ export declare class Client implements EventEmitter {
     TxCmd(nType: FCTYPE, nTo?: number, nArg1?: number, nArg2?: number, sMsg?: string): void;
     TxPacket(packet: Packet): void;
     static toUserId(id: number): number;
-    static toRoomId(id: number): number;
+    static toRoomId(id: number, camYou?: boolean): number;
     sendChat(id: number, msg: string): Promise<void>;
     sendPM(id: number, msg: string): Promise<void>;
     joinRoom(id: number): Promise<Packet>;

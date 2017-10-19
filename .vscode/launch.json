@@ -66,6 +66,26 @@
             "outDir": "${workspaceRoot}/lib"
         },
         {
+            "name": "Packet Inspector - CamYou",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceRoot}/src/test/packetInspectorCamYou.js",
+            "stopOnEntry": false,
+            "args": [],
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": null,
+            "runtimeExecutable": null,
+            "runtimeArgs": [
+                "--nolazy"
+            ],
+            "env": {
+                "NODE_ENV": "development"
+            },
+            "externalConsole": false,
+            "sourceMaps": true,
+            "outDir": "${workspaceRoot}/lib"
+        },
+        {
             "name": "Attach",
             "type": "node",
             "request": "attach",

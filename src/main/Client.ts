@@ -23,6 +23,8 @@ export class Client implements EventEmitter {
     private choseToLogIn: boolean = false;
     private completedModels: boolean = false;
     private useWebSockets: boolean = false;
+    private camYou: boolean = false;
+    private baseUrl: string;
     private serverConfig: ServerConfig;
     private streamBuffer: Buffer;
     private streamWebSocketBuffer: string;
@@ -52,11 +54,17 @@ export class Client implements EventEmitter {
     // cookie named "passcode".  Select it and copy the value listed as "Content".
     // It will be a long string of lower case letters that looks like gibberish.
     // *That* is the password to use here.
-    constructor(username: string = "guest", password: string = "guest", useWebSockets: boolean = false) {
+    constructor(username: string = "guest", password: string = "guest", options: boolean | {useWebSockets?: boolean, camYou?: boolean} = {useWebSockets: false, camYou: false}) {
+        if (typeof options === "boolean") {
+            logWithLevel(LogLevel.WARNING, `WARNING: Client useWebSockets as a boolean third constructor parameter is being deprecated, please see the release notes for v4.2.0 for the current way to use a websocket server connection`);
+        }
+
         this.net = require("net");
         this.username = username;
         this.password = password;
-        this.useWebSockets = useWebSockets;
+        this.useWebSockets = typeof options === "boolean" ? options : options.useWebSockets === true;
+        this.camYou = typeof options === "object" && options.camYou === true ? true : false;
+        this.baseUrl = this.camYou ? "camyou.com" : "myfreecams.com";
         this.sessionId = 0;
         this.streamBuffer = new Buffer(0);
         this.streamWebSocketBuffer = "";
@@ -126,6 +134,9 @@ export class Client implements EventEmitter {
                     logWithLevel(LogLevel.INFO, "Login handshake completed. Logged in as '" + this.username + "' with sessionId " + this.sessionId);
                     this.loginPacketReceived = true;
                     Client.currentReconnectSeconds = Client.initialReconnectSeconds;
+
+                    // Start the flow of ROOMDATA updates
+                    this.TxCmd(FCTYPE.ROOMDATA, 0, 1, 0);
                 }
                 break;
             case FCTYPE.DETAILS:
@@ -289,6 +300,29 @@ export class Client implements EventEmitter {
                     }
                 }
                 break;
+            case FCTYPE.ROOMDATA:
+                if (packet.nArg1 === 0 && packet.nArg2 === 0) {
+                    if (Array.isArray(packet.sMessage)) {
+                        for (let i = 0; i < packet.sMessage.length; i = i + 2) {
+                            let possibleModel = Model.getModel(packet.sMessage[i]);
+                            if (possibleModel !== undefined) {
+                                possibleModel.merge({"sid": possibleModel.bestSessionId, "m": {"rc": packet.sMessage[i + 1]}} as messages.Message);
+                            }
+                        }
+                    } else if (typeof(packet.sMessage) === "object") {
+                        for (let key in packet.sMessage) {
+                            if (packet.sMessage.hasOwnProperty(key)) {
+                                let rdmsg = packet.sMessage as messages.RoomDataUserCountObjectMessage;
+                                let possibleModel = Model.getModel(key);
+                                if (possibleModel !== undefined) {
+                                    possibleModel.merge({"sid": possibleModel.bestSessionId, "m": {"rc": rdmsg[key]}} as messages.Message);
+                                }
+                            }
+                        }
+                    }
+
+                }
+                break;
             default:
                 break;
         }
@@ -438,7 +472,7 @@ export class Client implements EventEmitter {
 
     private async _handleExtData(extData: messages.ExtDataMessage) {
         if (extData && extData.respkey) {
-            let url = "http://www.myfreecams.com/php/FcwExtResp.php?";
+            let url = `http://www.${this.baseUrl}/php/FcwExtResp.php?`;
             ["respkey", "type", "opts", "serv"].forEach((name) => {
                 url += `${name}=${(extData as any)[name]}&`;
             });
@@ -578,7 +612,7 @@ export class Client implements EventEmitter {
     // several times in the past.
     private async ensureEmoteParserIsLoaded(): Promise<void> {
         if (this.emoteParser === undefined) {
-            let obj = await this.loadFromMFC("http://www.myfreecams.com/_js/mfccore.js", (content) => {
+            let obj = await this.loadFromMFC(`http://www.${this.baseUrl}/_js/mfccore.js`, (content) => {
                 // Massager....Yes this is vulnerable to site breaks, but then
                 // so is this entire module.
 
@@ -589,10 +623,10 @@ export class Client implements EventEmitter {
                 content = content.substr(startIndex, endIndex - startIndex);
 
                 // Then massage the function somewhat and prepend some prerequisites
-                content =  `var document = {cookie: '', domain: 'myfreecams.com', location: { protocol: 'http:' }};
+                content =  `var document = {cookie: '', domain: '${this.baseUrl}', location: { protocol: 'http:' }};
                             var g_hPlatform = {
                                 "id": 01,
-                                "domain": "myfreecams.com",
+                                "domain": "${this.baseUrl}",
                                 "name": "MyFreeCams",
                                 "code": "mfc",
                                 "image_url": "https://img.mfcimg.com/",
@@ -610,14 +644,14 @@ export class Client implements EventEmitter {
             });
 
             this.emoteParser = new obj.ParseEmoteInput();
-            this.emoteParser.setUrl("http://api.myfreecams.com/parseEmote");
+            this.emoteParser.setUrl(`http://api.${this.baseUrl}/parseEmote`);
         }
     }
 
     // Loads the lastest server information from MFC, if it's not already loaded
     private async ensureServerConfigIsLoaded() {
         if (this.serverConfig === undefined) {
-            let obj = await this.loadFromMFC(`http://www.myfreecams.com/_js/serverconfig.js?nc=${Math.random()}`, (text) => {
+            let obj = await this.loadFromMFC(`http://www.${this.baseUrl}/_js/serverconfig.js?nc=${Math.random()}`, (text) => {
                 return "var serverConfig = " + text;
             });
             this.serverConfig = obj.serverConfig;
@@ -627,7 +661,7 @@ export class Client implements EventEmitter {
     // Sends a message back to MFC in the expected packet format
     // usually nTo==0, nArg1==0, nArg2==0, sMsg==null
     public TxCmd(nType: FCTYPE, nTo: number = 0, nArg1: number = 0, nArg2: number = 0, sMsg?: string): void {
-        logWithLevel(LogLevel.VERBOSE, "TxCmd Sending - nType: " + nType + ", nTo: " + nTo + ", nArg1: " + nArg1 + ", nArg2: " + nArg2 + ", sMsg:" + sMsg);
+        logWithLevel(LogLevel.VERBOSE, "TxCmd Sending - nType: " + FCTYPE[nType] + ", nTo: " + nTo + ", nArg1: " + nArg1 + ", nArg2: " + nArg2 + ", sMsg:" + sMsg);
         if (this.client === undefined) {
             throw new Error("Cannot call TxCmd on a disconnected client");
         }
@@ -665,17 +699,27 @@ export class Client implements EventEmitter {
     // Takes a number that might be a user id or a room
     // id and converts it to a user id (if necessary)
     public static toUserId(id: number): number {
-        if (id > 100000000) {
+        if (id >= 1000000000) {       // ??
+            id = id - 1000000000;
+        } else if (id >= 400000000) { // CamYou public room ID
+            id = id - 400000000;
+        } else if (id >= 300000000) { // ??
+            id = id - 300000000;
+        } else if (id >= 200000000) { // Group room IDs
+            id = id - 200000000;
+        } else if (id >= 100000000) { // MFC Public room IDs
             id = id - 100000000;
         }
+
         return id;
     }
 
     // Takes a number that might be a user id or a room
     // id and converts it to a room id (if necessary)
-    public static toRoomId(id: number): number {
-        if (id < 100000000) {
-            id = id + 100000000;
+    public static toRoomId(id: number, camYou: boolean = false): number {
+        let publicRoomId = camYou ? 400000000 : 100000000;
+        if (id < publicRoomId) {
+            id = id + publicRoomId;
         }
         return id;
     }
@@ -696,7 +740,7 @@ export class Client implements EventEmitter {
     // the model.
     public async sendChat(id: number, msg: string) {
         let encodedMsg = await this.EncodeRawChat(msg);
-        id = Client.toRoomId(id);
+        id = Client.toRoomId(id, this.camYou);
         this.TxCmd(FCTYPE.CMESG, id, 0, 0, encodedMsg);
     }
 
@@ -719,7 +763,7 @@ export class Client implements EventEmitter {
     // Joins the chat room of the given model
     public joinRoom(id: number): Promise<Packet> {
         return new Promise((resolve, reject) => {
-            let roomId = Client.toRoomId(id);
+            let roomId = Client.toRoomId(id, this.camYou);
             let modelId = Client.toUserId(id);
 
             let resultHandler = (p: Packet) => {
@@ -772,7 +816,7 @@ export class Client implements EventEmitter {
 
     // Leaves the chat room of the given model
     public async leaveRoom(id: number) {
-        id = Client.toRoomId(id);
+        id = Client.toRoomId(id, this.camYou);
         this.TxCmd(FCTYPE.JOINCHAN, 0, id, FCCHAN.PART); // @TODO - Confirm that this works, it's not been tested
     }
 
@@ -831,9 +875,9 @@ export class Client implements EventEmitter {
                     // Use good old TCP sockets and the older Flash method of
                     // communicating with the MFC chat servers
                     let chatServer = this.serverConfig.chat_servers[Math.floor(Math.random() * this.serverConfig.chat_servers.length)];
-                    logWithLevel(LogLevel.INFO, "Connecting to MyFreeCams chat server " + chatServer + "...");
+                    logWithLevel(LogLevel.INFO, `Connecting to ${this.camYou ? "CamYou" : "MyFreeCams:"} chat server ${chatServer}...`);
 
-                    this.client = this.net.connect(8100, chatServer + ".myfreecams.com", () => { // 'connect' listener
+                    this.client = this.net.connect(8100, chatServer + `.${this.baseUrl}`, () => { // 'connect' listener
                         this.client.on("data", (data: any) => {
                             this._readData(data);
                         });
@@ -861,9 +905,9 @@ export class Client implements EventEmitter {
                     let chatServer = wsSrvs[Math.floor(Math.random() * wsSrvs.length)];
                     logWithLevel(LogLevel.INFO, "Connecting to MyFreeCams websocket server " + chatServer + "...");
 
-                    this.client = new WebSocket(`ws://${chatServer}.myfreecams.com:8080/fcsl`, {
+                    this.client = new WebSocket(`ws://${chatServer}.${this.baseUrl}:8080/fcsl`, {
                             // protocol: this.serverConfig.websocket_servers[chatServer] as string,
-                            origin: "http://m.myfreecams.com",
+                            origin: `http://m.${this.baseUrl}`,
                     });
 
                     this.client.on("open", () => {
@@ -985,10 +1029,16 @@ export class Client implements EventEmitter {
         if (password !== undefined) {
             this.password = password;
         }
+
+        let localUsername = this.username;
+        if (this.camYou) {
+            localUsername = "2/" + localUsername;
+        }
+
         if (!this.useWebSockets) {
-            this.TxCmd(FCTYPE.LOGIN, 0, 20071025, 0, this.username + ":" + this.password);
+            this.TxCmd(FCTYPE.LOGIN, 0, 20071025, 0, localUsername + ":" + this.password);
         } else {
-            this.TxCmd(FCTYPE.LOGIN, 0, 20080909, 0, this.username + ":" + this.password);
+            this.TxCmd(FCTYPE.LOGIN, 0, 20080909, 0, localUsername + ":" + this.password);
         }
     }
 

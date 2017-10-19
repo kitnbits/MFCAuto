@@ -4,16 +4,19 @@ Creates and maintains a TCP socket connection to MFC chat servers similar to the
 
 ---
 
-### constructor(username: string = "guest", password: string = "guest", useWebSockets: boolean = false)
+### constructor(username: string = "guest", password: string = "guest", options: {useWebSockets?: boolean, camYou?: boolean} = {useWebSockets: false, camYou: false})
 Creates a Client instance with the given credentials, or with guest credentials by default.  [See my comment here if you wish to log in with a real account.](https://github.com/ZombieAlex/MFCAuto/blob/master/src/main/Client.ts#L42)
 
-Set the third parameter to true to make the Client connect via WebSockets rather than traditional TCP sockets.
+The third parameter is an optional options bag that controls whether the Client connects to MyFreeCams or CamYou, and whether the Client connects Flash/TCP sockets or WebSockets. The default is to connect to MyFreeCams using Flash/TCP style sockets.
 
 You can have multiple Client instances active and connected at once. They will not interfere with each other.
 
 ```javascript
-var guestClient = new mfc.Client();
-var premiumClient = new mfc.Client(premiumUsername, premiumPasswordHash);
+var guestMFCClient = new mfc.Client();
+var premiumMFCClient = new mfc.Client(premiumUsername, premiumPasswordHash);
+var guestMFCWebSocketClient = new mfc.Client("guest", "guest", {useWebSockets: true});
+var guestCamYouClient = new mfc.Client("guest", "guest", {camYou: true});
+var guestCamYouWebSocketClient = new mfc.Client("guest", "guest", {useWebSockets: true, camYou: true});
 ```
 Before any MFCAuto events are processed, either on the Client instances or Model instances, you must connect to MFC...
 

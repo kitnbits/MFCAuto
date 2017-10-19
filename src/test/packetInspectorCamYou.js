@@ -29,7 +29,7 @@ if (fs.existsSync(cred)) {
     }
 }
 // mfc.setLogLevel(mfc.LogLevel.DEBUG);
-let client = new mfc.Client(user, pass, {useWebSockets: true});
+let client = new mfc.Client(user, pass, {useWebSockets: true, camYou: true});
 
 client.on("ANY", (packet) => {
     log(packet.toString(), "packetLog", null);
@@ -41,5 +41,5 @@ client.connectAndWaitForModels().then(() => {
     freeModels.sort((a, b) => a.bestSession.rc - b.bestSession.rc);
     let topModel = freeModels[freeModels.length - 1];
     //Join her room for more interesting packets to inspect
-    client.joinRoom(topModel.uid);
+    client.joinRoom(topModel.uid).catch(()=>{});
 });

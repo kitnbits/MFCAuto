@@ -10,14 +10,14 @@ import {FCTYPE} from "./Constants";
 // understanding of the MFC communication protocol.
 
 // The AnyMessage union describes all possible sMessage types
-export type AnyMessage = FCTypeLoginResponse|FCTypeSlaveVShareResponse|FCTypeTagsResponse|FCTokenIncResponse|RoomDataMessage|ExtDataMessage|ManageListMessage|BookmarksMessage|Message;
+export type AnyMessage = FCTypeLoginResponse|FCTypeSlaveVShareResponse|FCTypeTagsResponse|FCTokenIncResponse|RoomDataMessage|ExtDataMessage|ManageListMessage|BookmarksMessage|RoomDataUserCountObjectMessage|RoomDataUserCountArrayMessage|Message;
 
 export type FCTypeLoginResponse = string; // After successfully logging in, a FCTYPE.LOGIN response is sent whose sMessage is your chat name as a plain string
 export type FCTypeSlaveVShareResponse = number[]; // FCTYPE.SLAVEVSHARE messages contain this payload which I don't understand
 export interface FCTypeTagsResponse { // FCTYPE.TAGS messages
     // A numbered property like "18137786": string[];
     // Where the numbered property is a model ID and the array of strings are the models tags
-    [index: number]: string[];
+    [index: string]: string[];
 }
 export interface FCTokenIncResponse { // FCTYPE.TOKENINC messages are received when someone tips publically in a room you're in
     ch: number;
@@ -37,6 +37,12 @@ export interface RoomDataMessage {
     topic: string;
     total: number;
 }
+
+export interface RoomDataUserCountObjectMessage {
+    [index: string]: number;
+}
+
+export type RoomDataUserCountArrayMessage = number[];
 
 // ExtData messages are often prompts to issue AJAX requests and then
 // take the result of those requests and pipe them back through as a

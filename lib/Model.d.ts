@@ -35,7 +35,7 @@ export declare class Model implements EventEmitter {
     static listenerCount: (type: string | symbol) => number;
     private static knownModels;
     constructor(uid: number);
-    static getModel(id: any, createIfNecessary?: boolean): Model | undefined;
+    static getModel(id: string | number, createIfNecessary?: boolean): Model | undefined;
     static findModels(filter: (model: Model) => boolean): Model[];
     readonly bestSessionId: number;
     readonly bestSession: ModelSessionDetails;

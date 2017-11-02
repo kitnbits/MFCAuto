@@ -441,32 +441,28 @@ export class Client implements EventEmitter {
             let currentMessage = this.streamWebSocketBuffer.slice(0, messageLength);
             let originalMessage = currentMessage.slice();
 
+            this.streamWebSocketBuffer = this.streamWebSocketBuffer.slice(messageLength);
+
+            let intParamsLength = currentMessage.split(" ", 5).reduce((p, c) => p + c.length, 0) + 5;
+            let intParams = currentMessage.split(" ", 5).map(s => parseInt(s, 10));
+            let [FCType, nFrom, nTo, nArg1, nArg2] = intParams;
+            currentMessage = currentMessage.slice(intParamsLength);
+
             try {
-                this.streamWebSocketBuffer = this.streamWebSocketBuffer.slice(messageLength);
-
-                let intParamsLength = currentMessage.split(" ", 5).reduce((p, c) => p + c.length, 0) + 5;
-                let intParams = currentMessage.split(" ", 5).map(s => parseInt(s, 10));
-                let [FCType, nFrom, nTo, nArg1, nArg2] = intParams;
-                currentMessage = currentMessage.slice(intParamsLength);
-
-                try {
-                    currentMessage = JSON.parse(decodeURIComponent(currentMessage));
-                } catch (e) {
-                    // Guess it wasn't a JSON blob. OK, just use it raw.
-                }
-
-                this._packetReceived(new Packet(
-                    FCType,
-                    nFrom,
-                    nTo,
-                    nArg1,
-                    nArg2,
-                    currentMessage.length,
-                    currentMessage.length === 0 ? undefined : currentMessage,
-                ));
+                currentMessage = JSON.parse(decodeURIComponent(currentMessage));
             } catch (e) {
-                throw new Error(`Error handling websocket packet: \n\t${e}\n\t"${originalMessage}"`);
+                // Guess it wasn't a JSON blob. OK, just use it raw.
             }
+
+            this._packetReceived(new Packet(
+                FCType,
+                nFrom,
+                nTo,
+                nArg1,
+                nArg2,
+                currentMessage.length,
+                currentMessage.length === 0 ? undefined : currentMessage,
+            ));
         }
     }
 

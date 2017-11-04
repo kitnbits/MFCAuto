@@ -78,9 +78,9 @@ export interface BookmarksMessage {
 export interface BaseMessage {
     sid: number;    // Session ID
     uid: number;    // User ID
-    lv?: number;    // User level, 0 == guest, 4 == model // @TODO, fill in the rest here.  There's premium/basic/admin/etc....
+    lv?: number;    // User level, see the FCLEVEL enum in Constants.ts
     nm?: string;    // User name for chat
-    vs?: number;    // State (hmm, does "VS" stand for "video state"?  Maybe, that might make sense.)
+    vs?: number;    // Video State, see either STATE or FCVIDEO in Constants.ts
     msg?: string;   // The text of any chat message or PM if this is a CMESG or PMESG FCType
     [index: string]: any; // Catch all to cover what I don't know and appease the TypeScript compiler in some cases
 }

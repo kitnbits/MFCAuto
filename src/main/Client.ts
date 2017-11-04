@@ -54,16 +54,27 @@ export class Client implements EventEmitter {
     // cookie named "passcode".  Select it and copy the value listed as "Content".
     // It will be a long string of lower case letters that looks like gibberish.
     // *That* is the password to use here.
-    constructor(username: string = "guest", password: string = "guest", options: boolean | {useWebSockets?: boolean, camYou?: boolean} = {useWebSockets: false, camYou: false}) {
+    constructor(username: string = "guest", password: string = "guest", options: boolean | {useWebSockets?: boolean, camYou?: boolean} = {}) {
+        let defaultOptions = {
+            useWebSockets: false,
+            camYou: false,
+        };
+
+        // v4.1.0 supported a third constructor parameter that was a boolean controlling whether to use
+        // WebSockets (true) or not (false, the default). For backward compat reasons, we'll still handle
+        // that case gracefully. New consumers should move to the options bag syntax.
         if (typeof options === "boolean") {
             logWithLevel(LogLevel.WARNING, `WARNING: Client useWebSockets as a boolean third constructor parameter is being deprecated, please see the release notes for v4.2.0 for the current way to use a websocket server connection`);
+            options = { useWebSockets: options };
         }
+
+        options = Object.assign({}, defaultOptions, options);
 
         this.net = require("net");
         this.username = username;
         this.password = password;
-        this.useWebSockets = typeof options === "boolean" ? options : options.useWebSockets === true;
-        this.camYou = typeof options === "object" && options.camYou === true ? true : false;
+        this.useWebSockets = options.useWebSockets as boolean;
+        this.camYou = options.camYou as boolean;
         this.baseUrl = this.camYou ? "camyou.com" : "myfreecams.com";
         this.sessionId = 0;
         this.streamBuffer = new Buffer(0);

@@ -153,7 +153,7 @@ export class Model implements EventEmitter {
     public mergeTags(newTags: string[]) {
         if (Array.isArray(newTags)) {
             let oldTags = this.tags.slice();
-            this.tags = this.tags.concat(newTags);
+            this.tags = Array.from(new Set(this.tags.concat(newTags))).sort();
             this.emit("tags", this, oldTags, this.tags);
             Model.emit("tags", this, oldTags, this.tags);
             this.emit("ANY", this, oldTags, this.tags);
@@ -370,7 +370,7 @@ interface whenMapEntry {
     onFalseAfterTrue?: whenCallback;
     matchedSet: Set<number>;
 }
-interface mergeCallbackPayload { prop: string; oldstate: number | string | string[] | boolean | undefined; newstate: number | string | string[] | boolean | undefined; };
+interface mergeCallbackPayload { prop: string; oldstate: number | string | string[] | boolean | undefined; newstate: number | string | string[] | boolean | undefined; }
 export interface ModelSessionDetails extends BaseMessage, ModelDetailsMessage, UserDetailsMessage, SessionDetailsMessage {
     model_sw?: number;
     truepvt?: number;

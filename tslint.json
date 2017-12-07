@@ -1,17 +1,31 @@
 {
   "rules": {
+    "adjacent-overload-signatures": true,
     "align": [
       true,
       "parameters",
       "arguments",
       "statements"
     ],
+    "await-promise": true,
     "ban": [
-        true,
-        [ "_", "forEach" ],
-        [ "_", "each" ],
-        [ "$", "each" ],
-        [ "angular", "forEach" ]
+      true,
+      [
+        "_",
+        "forEach"
+      ],
+      [
+        "_",
+        "each"
+      ],
+      [
+        "$",
+        "each"
+      ],
+      [
+        "angular",
+        "forEach"
+      ]
     ],
     "class-name": false,
     "comment-format": [
@@ -28,9 +42,11 @@
     "interface-name": [
       false
     ],
-    "jsdoc-format": true,
+    "jsdoc-format": [
+      true,
+      "check-multiline-start"
+    ],
     "label-position": true,
-    "label-undefined": true,
     "max-line-length": [
       false,
       140
@@ -38,16 +54,20 @@
     "member-access": true,
     "member-ordering": [
       false,
-      "public-before-private",
-      "static-before-instance",
-      "variables-before-functions"
+      {
+        "order": [
+          "public-before-private",
+          "static-before-instance",
+          "variables-before-functions"
+        ]
+      }
     ],
     "no-angle-bracket-type-assertion": true,
-    "no-any": false,
+    "no-any": true,
     "no-arg": true,
     "no-bitwise": false,
     "no-conditional-assignment": true,
-    "no-consecutive-blank-lines": false,
+    "no-consecutive-blank-lines": true,
     "no-console": [
       true,
       "debug",
@@ -57,23 +77,35 @@
       "trace"
     ],
     "no-construct": true,
-    "no-constructor-vars": true,
     "no-debugger": true,
-    "no-duplicate-key": true,
+    "no-duplicate-imports": true,
+    "no-duplicate-super": true,
     "no-duplicate-variable": true,
     "no-empty": true,
     "no-eval": true,
+    "no-floating-promises": true,
+    "no-for-in-array": true,
+    "no-inferred-empty-object-type": true,
     "no-inferrable-types": false,
     "no-internal-module": true,
+    "no-invalid-template-strings": true,
     "no-invalid-this": true,
+    "no-magic-numbers": true,
+    "no-misused-new": true,
     "no-null-keyword": true,
+    "no-redundant-jsdoc": false,
     "no-reference": true,
     "no-require-imports": false,
     "no-shadowed-variable": true,
+    "no-sparse-arrays": true,
     "no-string-literal": true,
+    "no-string-throw": true,
     "no-switch-case-fall-through": true,
     "no-trailing-whitespace": true,
-    "no-unreachable": true,
+    "no-unbound-method": true,
+    "no-unnecessary-type-assertion": true,
+    "no-unsafe-any": true,
+    "no-unsafe-finally": true,
     "no-unused-expression": true,
     "no-unused-variable": true,
     "no-use-before-declare": true,
@@ -88,13 +120,28 @@
       "check-finally",
       "check-whitespace"
     ],
+    "only-arrow-functions": [
+      true,
+      "allow-declarations"
+    ],
+    "prefer-conditional-expression": true,
+    "prefer-const": true,
+    "prefer-for-of": true,
+    "prefer-readonly": true,
+    "promise-function-async": true,
     "quotemark": [
       true,
       "double",
       "avoid-escape"
     ],
     "radix": false,
-    "semicolon": [true, "always"],
+    "restrict-plus-operands": true,
+    "semicolon": [
+      true,
+      "always"
+    ],
+    "strict-boolean-expressions": false,
+    "strict-type-predicates": false,
     "switch-default": true,
     "trailing-comma": [
       true,
@@ -132,12 +179,9 @@
         "variable-declaration": "space"
       }
     ],
+    "unified-signatures": true,
+    "use-default-type-parameter": true,
     "use-isnan": true,
-    "use-strict": [
-      true,
-      "check-module",
-      "check-function"
-    ],
     "variable-name": [
       true,
       "ban-keywords"

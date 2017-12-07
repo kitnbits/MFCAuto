@@ -2,6 +2,7 @@ node_modules/
 coverage/
 src/main/tsconfig.json
 src/test/packetLog.txt
+src/test/packetLogSchema.json
 packetLog.txt
 src/test/cred.txt
 *.map

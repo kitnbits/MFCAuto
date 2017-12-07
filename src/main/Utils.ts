@@ -1,14 +1,23 @@
 import * as assert from "assert";
 import * as http from "http";
+import * as https from "https";
+import * as fs from "fs";
 
 export enum LogLevel {
-    SILENT,     // Nothing
-    ERROR,      // Only fatal or state corrupting errors
-    WARNING,    // Non-fatal warnings
-    INFO,       // Status info
-    VERBOSE,    // More verbose status info
-    DEBUG,      // Debug information that won't be useful to most people
-    TRACE,      // Debug information plus the entire packet log
+    /** No logging to the console, not even errors */
+    SILENT,
+    /** Only fatal or state corrupting errors */
+    ERROR,
+    /** Non-fatal warnings */
+    WARNING,
+    /** Status info, this is the default logging level */
+    INFO,
+    /** More verbose status info */
+    VERBOSE,
+    /** Debug information that won't be useful to most people */
+    DEBUG,
+    /** Debug information plus the entire packet log. This is very very verbose. */
+    TRACE,
 }
 
 let logLevel = LogLevel.INFO;
@@ -27,17 +36,16 @@ export function logWithLevel(level: LogLevel, msg: string, fileRoot?: string, co
 }
 
 // Helper logging function that timestamps each message and optionally outputs to a file as well
-export function log(msg: string, fileRoot?: string, consoleFormatter?: (msg: string) => string): void {
+export function log(msg: string, fileRoot?: string, consoleFormatter?: (msg: string) => string | null): void {
     "use strict";
     assert.notStrictEqual(msg, undefined, "Trying to print undefined.  This usually indicates a bug upstream from the log function.");
 
     // Pads single digit number with a leading zero, simple helper function for log2
-    function toStr(n: number): string { return n < 10 ? "0" + n : "" + n; }
+    // tslint:disable-next-line:no-magic-numbers
+    function toStr(n: number): string { return n < 10 ? "0" + n.toString() : "" + n.toString(); }
 
-    let fs = require("fs");
-
-    let d = new Date();
-    let taggedMsg = "[" + (toStr(d.getMonth() + 1)) + "/" + (toStr(d.getDate())) + "/" + (d.getFullYear()) + " - " + (toStr(d.getHours())) + ":" + (toStr(d.getMinutes())) + ":" + (toStr(d.getSeconds()))/* + "." + (d.getMilliseconds())*/;
+    const d = new Date();
+    let taggedMsg = "[" + (toStr(d.getMonth() + 1)) + "/" + (toStr(d.getDate())) + "/" + (d.getFullYear().toString()) + " - " + (toStr(d.getHours())) + ":" + (toStr(d.getMinutes())) + ":" + (toStr(d.getSeconds()))/* + "." + (d.getMilliseconds().toString())*/;
     if (fileRoot !== undefined) {
         taggedMsg += (", " + fileRoot.toUpperCase() + "] " + msg);
     } else {
@@ -46,9 +54,9 @@ export function log(msg: string, fileRoot?: string, consoleFormatter?: (msg: str
 
     // Explicitly passing null, not undefined, as the consoleFormatter
     // means to skip the console output completely
-    // tslint:disable:no-null-keyword
+    // tslint:disable-next-line:no-null-keyword
     if (consoleFormatter !== null) {
-        if (consoleFormatter) {
+        if (consoleFormatter !== undefined) {
             console.log(consoleFormatter(taggedMsg));
         } else {
             console.log(taggedMsg);
@@ -56,7 +64,7 @@ export function log(msg: string, fileRoot?: string, consoleFormatter?: (msg: str
     }
 
     if (fileRoot !== undefined) {
-        let fd = fs.openSync(fileRoot + ".txt", "a");
+        const fd = fs.openSync(fileRoot + ".txt", "a");
         fs.writeSync(fd, taggedMsg + "\r\n");
         fs.closeSync(fd);
     }
@@ -67,7 +75,7 @@ export function log(msg: string, fileRoot?: string, consoleFormatter?: (msg: str
 export function decodeIfNeeded(str: string): string {
     if (typeof str === "string" && str.indexOf("%") !== -1) {
         try {
-            let decoded = decodeURIComponent(str);
+            const decoded = decodeURIComponent(str);
             if (decoded === str) {
                 // Apparently it wasn't actually encoded
                 // So just return it
@@ -75,7 +83,7 @@ export function decodeIfNeeded(str: string): string {
             } else {
                 // If it was fully URI encoded, then re-encoding
                 // the decoded should return the original
-                let encoded = encodeURIComponent(decoded);
+                const encoded = encodeURIComponent(decoded);
                 if (encoded === str) {
                     // Yep, it was fully encoded
                     return decoded;
@@ -96,12 +104,15 @@ export function decodeIfNeeded(str: string): string {
     }
 }
 
-// Think of this as util.inherits, except that it doesn't completely overwrite
-// the prototype of the base object.  It just adds to it.
-export function applyMixins(derivedCtor: any, baseCtors: any[]) {
+// Deprecated. This function is no longer used and may be removed from
+// future versions of MFCAuto. For mixin patterns, please move to the
+// new TypeScript 2.2+ syntax as described here:
+//   https://www.typescriptlang.org/docs/handbook/release-notes/typescript-2-2.html
+export function applyMixins(derivedCtor: Function, baseCtors: Function[]) {
     "use strict";
     baseCtors.forEach(baseCtor => {
         Object.getOwnPropertyNames(baseCtor.prototype).forEach(name => {
+            // tslint:disable-next-line:no-unsafe-any
             derivedCtor.prototype[name] = baseCtor.prototype[name];
         });
     });
@@ -109,17 +120,35 @@ export function applyMixins(derivedCtor: any, baseCtors: any[]) {
 
 // Simple promisified httpGet helper that helps us use
 // async/await and have cleaner code elsewhere
-export function httpGet(url: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-        http.get(url, function (res: any) {
+export async function httpGet(url: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        http.get(url, (res: http.IncomingMessage) => {
             let contents = "";
-            res.on("data", function (chunk: string) {
+            res.on("data", (chunk: string) => {
                 contents += chunk;
             });
-            res.on("end", function () {
+            res.on("end", () => {
                 resolve(contents);
             });
-        }).on("error", function (e: any) {
+        }).on("error", (e: Error) => {
+            reject(e);
+        });
+    });
+}
+
+// Simple promisified httpsGet helper that helps us use
+// async/await and have cleaner code elsewhere
+export async function httpsGet(url: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        https.get(url, (res: http.IncomingMessage) => {
+            let contents = "";
+            res.on("data", (chunk: string) => {
+                contents += chunk;
+            });
+            res.on("end", () => {
+                resolve(contents);
+            });
+        }).on("error", (e: Error) => {
             reject(e);
         });
     });

@@ -1,6 +1,8 @@
 import re
 from urllib.request import urlopen
-url = "http://www.myfreecams.com/_js/mfccore.js"
+import json
+serverConfig = "https://www.myfreecams.com/_js/serverconfig.js"
+url = "https://www.myfreecams.com/_js/mfccore.js"
 # Maybe it's wrong to merge in the w. stuff?  Is that all just for the UI?
 constantRe = re.compile(r'(\s|;?|,)(FCS|w)\.([A-Z0-9]+)_([A-Z0-9_]+)\s+?=\s+?([0-9]+);')
 constantMap = dict()
@@ -8,7 +10,9 @@ constantMap = dict()
 header = """// Various constants and enums used by MFC.  Most of these values can be seen here:
 // http://www.myfreecams.com/_js/mfccore.js
 
-export let MAGIC: number = -2027771214;
+export const MAGIC = -2027771214;
+export const FLASH_PORT = 8100;
+export const WEBSOCKET_PORT = 8080;
 
 // STATE is essentially the same as FCVIDEO but has friendly names
 // for better log messages and code readability
@@ -28,11 +32,24 @@ export enum STATE {
     // RX_VOY = 92,          // Unused?
     // RX_GRP = 93,          // Unused?
     // NULL = 126,           // Unused?
-    Offline = 127            // OFFLINE
+    Offline = 127,           // OFFLINE
+}
+
+// Version number to pass along with our
+// FCTYPE_LOGIN login requests
+//
+// The latest Flash version number is here:
+//   https://www.myfreecams.com/js/wsgw.js
+// The latest WebSocket version number is here:
+//   http://m.myfreecams.com/source.min.js
+export enum LOGIN_VERSION {
+    FLASH = 20071025,
+    WEBSOCKET = 20080910,
 }
 """
 
 #Add our own constants...
+constantMap.setdefault("FCTYPE", dict())["CLIENT_MANUAL_DISCONNECT"] = -6
 constantMap.setdefault("FCTYPE", dict())["CLIENT_DISCONNECTED"] = -5
 constantMap.setdefault("FCTYPE", dict())["CLIENT_MODELSLOADED"] = -4
 constantMap.setdefault("FCTYPE", dict())["CLIENT_CONNECTED"] = -3
@@ -53,6 +70,12 @@ with urlopen(url) as data:
             for subtype, value in sorted(constantMap[fctype].items(), key=lambda x: int(x[1])):
                 f.write('    "{}" = {},\n'.format(subtype, value))
             f.write("}\n")
-        f.write("\n")
 
+        with urlopen(serverConfig) as configData:
+            configText = configData.read().decode('utf-8')
+            config = json.loads(configText)
+            configText = json.dumps(config, indent=4, sort_keys=True)
+            f.write("\n// tslint:disable:trailing-comma\n")
+            f.write("export const CACHED_SERVERCONFIG = {}".format(configText))
+            f.write(";\n// tslint:enable:trailing-comma\n")
 print("Done")

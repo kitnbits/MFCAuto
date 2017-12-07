@@ -24,13 +24,15 @@
             "outDir": "${workspaceRoot}/lib"
         },
         {
-            "name": "WebSocket Tests",
+            "name": "Mocha Tests Specific",
             "type": "node",
             "request": "launch",
             "program": "${workspaceRoot}/node_modules/mocha/bin/_mocha",
             "stopOnEntry": false,
             "args": [
-                "${workspaceRoot}/src/test/testWS.js"
+                "${workspaceRoot}/src/test/test.js",
+                "-g",
+                "mfc.*should succeed on reconnect once chat server DNS recovers"
             ],
             "cwd": "${workspaceRoot}",
             "preLaunchTask": null,

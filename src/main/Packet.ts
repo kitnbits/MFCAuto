@@ -5,23 +5,35 @@ import {logWithLevel, LogLevel, decodeIfNeeded} from "./Utils";
 import {Model} from "./Model";
 
 // Forward definitions for the TypeScript compiler
-declare var escape: (text: string) => string;
 declare var unescape: (text: string) => string;
 
-// Packet represents a single, complete message received from the chat server
+/** Packet represents a single, complete message received from the chat server */
 export class Packet {
-    public readonly FCType: FCTYPE;     // The message type
-    public readonly nFrom: number;      // Who sent the message (unclear what this actually represents, but it looks like a session id)
-    public readonly nTo: number;        // Who the message is for (almost always your own session id)
-    public readonly nArg1: number;      // Variable argument 1 (unclear usage in practice)
-    public readonly nArg2: number;      // Variable argument 2 (if the packet is about a model, updating her state or room title for instance, this value will be the model's user id)
-    public readonly sPayload: number;   // Payload size
-    public readonly sMessage: AnyMessage | undefined;      // The actual payload
+    /**
+     * The Packet type. See FCTYPE in ./src/main/Constants.ts for all possible
+     * message types
+     */
+    public readonly FCType: FCTYPE;
+    /** Number representing the channel or entity this packet is from */
+    public readonly nFrom: number;
+    /** Number representing the channel or entity this packet is to */
+    public readonly nTo: number;
+    /** Number whose meaning varies depending on the packet's FCType */
+    public readonly nArg1: number;
+    /** Number whose meaning varies depending on the packet's FCType */
+    public readonly nArg2: number;
+    /** Size of any string payload contained in this message */
+    public readonly sPayload: number;
+    /**
+     * Payload of the packet, this can be a string, array, object or undefined
+     * depending on the FCType of the packet and the whims of the chat server
+     */
+    public readonly sMessage: AnyMessage | undefined;
 
     // Property backing fields
     private _aboutModel: Model | undefined;
     private _pMessage: string | undefined;
-    private _chatString: string;
+    private _chatString: string | undefined;
 
     constructor(FCType: FCTYPE, nFrom: number, nTo: number, nArg1: number, nArg2: number, sPayload: number, sMessage: AnyMessage | undefined) {
         this.FCType = FCType;
@@ -33,8 +45,11 @@ export class Packet {
         this.sMessage = sMessage;
     }
 
-    // Try to determine which model this packet is loosely "about"
-    // meaning whose receiving the tip/chat/status update/etc
+    /**
+     * The model this packet is loosely "about", meaning
+     * who's receiving the tip/chat/status update/etc.
+     * For some packets this can be undefined.
+     */
     get aboutModel(): Model | undefined {
         if (this._aboutModel === undefined) {
             let id = -1;
@@ -63,9 +78,8 @@ export class Packet {
                     id = this.nTo;
                     break;
                 case FCTYPE.ROOMDATA:
-                    let rdm = this.sMessage as RoomDataMessage;
-                    if (rdm !== undefined && rdm.model !== undefined) {
-                        id = rdm.model;
+                    if (Packet.isRoomDataMessage(this.sMessage)) {
+                        id = this.sMessage.model;
                     }
                     break;
                 case FCTYPE.LOGIN:
@@ -96,83 +110,86 @@ export class Packet {
         return this._aboutModel;
     }
 
-    // This parses MFC's emote encoding and replaces those tokens with the simple
-    // emote code like ":wave".  Design intent is not for this function to be
-    // called directly, but rather for the decoded string to be accessed through
-    // the pMessage property, which has the beneficial side-effect of caching the
-    // result for faster repeated access.
+    /**
+     * This parses MFC's emote encoding and replaces those tokens with the simple
+     * emote code like ":wave".  Design intent is not for this function to be
+     * called directly, but rather for the decoded string to be accessed through
+     * the pMessage property, which has the beneficial side-effect of caching the
+     * result for faster repeated access.
+     * @access private
+     */
     private _parseEmotes(msg: string): string | undefined {
         try {
             msg = unescape(msg);
 
             //  image parsing
+            const maxEmotesToParse = 10;
+            const emoteCodeIndex = 5;
             let nParseLimit = 0;
 
             //  This regex is directly from mfccore.js, ParseEmoteOutput.prototype.Parse, with the same letiable name etc
-            let oImgRegExPattern = /#~(e|c|u|ue),(\w+)(\.?)(jpeg|jpg|gif|png)?,([\w\-\:\);\(\]\=\$\?\*]{0,48}),?(\d*),?(\d*)~#/;
+            const oImgRegExPattern = /#~(e|c|u|ue),(\w+)(\.?)(jpeg|jpg|gif|png)?,([\w\-\:\);\(\]\=\$\?\*]{0,48}),?(\d*),?(\d*)~#/;
 
-            let re: any = [];
-            // tslint:disable:no-conditional-assignment
-            while ((re = msg.match(oImgRegExPattern)) && nParseLimit < 10) {
-                let sShortcut = re[5] || "";
-
-                if (sShortcut) {
-                    sShortcut = ":" + sShortcut;
-                } else {
-                    sShortcut = "<UNKNOWN EMOTE CODE: " + msg + ">";
-                }
-
+            let re: RegExpMatchArray | null = [];
+            // tslint:disable-next-line:no-conditional-assignment
+            while ((re = msg.match(oImgRegExPattern)) !== null && nParseLimit < maxEmotesToParse) {
+                const sShortcut = (re[emoteCodeIndex] !== undefined) ? ":" + re[emoteCodeIndex] : "<UNKNOWN EMOTE CODE: " + msg + ">";
                 msg = msg.replace(oImgRegExPattern, sShortcut);
-
                 nParseLimit++;
             }
 
             return msg;
         } catch (e) {
             // In practice I've never seen this happen, but if it does, it's not serious enough to tear down the whole client...
-            logWithLevel(LogLevel.WARNING, "Error parsing emotes from '" + msg + "': " + e);
+            logWithLevel(LogLevel.WARNING, `Error parsing emotes from '${msg}': ${e}`);
             return undefined;
         }
     }
 
-    // Returns the formatted text of chat, PM, or tip messages.  For instance
-    // the raw sMessage.msg string may be something like:
-    //   "I am happy #~ue,2c9d2da6.gif,mhappy~#"
-    // This returns that in the more human readable format:
-    //   "I am happy :mhappy"
+    /**
+     * Returns the formatted text of chat, PM, or tip messages.  For instance
+     * the raw sMessage.msg string may be something like:
+     *   `I am happy #~ue,2c9d2da6.gif,mhappy~#`
+     * This returns that in the more human readable format:
+     *   `I am happy :mhappy`
+     */
     public get pMessage(): string | undefined {
         // Formats the parsed message component of this packet, if one exists, with decoded emotes
         if (this._pMessage === undefined && typeof this.sMessage === "object") {
             if (this.FCType === FCTYPE.CMESG || this.FCType === FCTYPE.PMESG || this.FCType === FCTYPE.TOKENINC) {
-                let obj: Message = this.sMessage as Message;
-                if (obj && obj.msg) {
-                    obj.msg = decodeIfNeeded(obj.msg);
-                    this._pMessage = this._parseEmotes(obj.msg);
+                if (Packet.hasMsgString(this.sMessage)) {
+                    this.sMessage.msg = decodeIfNeeded(this.sMessage.msg);
+                    this._pMessage = this._parseEmotes(this.sMessage.msg);
                 }
             }
         }
         return this._pMessage;
     }
 
-    // For chat, PM, or tip messages, this property returns the text of the
-    // message as it would appear in the MFC chat window with the username
-    // prepended, etc:
-    //
-    //   AspenRae: Thanks guys! :mhappy
-    //
-    // This is useful for logging.
-    public get chatString(): string {
+    /**
+     * For chat, PM, or tip messages, this property returns the text of the
+     * message as it would appear in the MFC chat window with the username
+     * prepended, etc:
+     *
+     *   `AspenRae: Thanks guys! :mhappy`
+     *
+     * This is useful for logging.
+     */
+    public get chatString(): string | undefined {
         if (this._chatString === undefined) {
-            if (this.sMessage && typeof this.sMessage === "object") {
+            if (typeof this.sMessage === "object") {
                 switch (this.FCType) {
                     case FCTYPE.CMESG:
                     case FCTYPE.PMESG:
-                        let msg: Message = this.sMessage as Message;
-                        this._chatString = msg.nm + ": " + this.pMessage;
+                        if (Packet.hasMsgString(this.sMessage)) {
+                            this._chatString = `${this.sMessage.nm}: ${this.pMessage}`;
+                        }
                         break;
                     case FCTYPE.TOKENINC:
-                        let tok: FCTokenIncResponse = this.sMessage as FCTokenIncResponse;
-                        this._chatString = tok.u[2] + " has tipped " + tok.m[2] + " " + tok.tokens + " tokens" + (this.pMessage ? (": '" + this.pMessage + "'") : ".");
+                        if (Packet.isTokenInc(this.sMessage)) {
+                            const nameIndex = 2;
+                            this._chatString = `${this.sMessage.u[nameIndex]} has tipped ${this.sMessage.m[nameIndex]} ${this.sMessage.tokens} tokens${this.pMessage !== undefined ? (`: '${this.pMessage}'`) : "."}`;
+                        }
                         break;
                     default:
                         break;
@@ -184,13 +201,33 @@ export class Packet {
     }
 
     public toString(): string {
-        function censor(key: string, value: any) {
+        // tslint:disable-next-line:no-any
+        const censor = (key: string, value: any) => {
             if (key === "FCType") {
                 // Replace the numerical FCType value with it's more readable textual form
                 return FCTYPE[this.FCType];
             }
             return value;
-        }
+        };
         return JSON.stringify(this, censor);
+    }
+
+    // Type guards for Packet.ts
+    private static isRoomDataMessage(rdMsg: AnyMessage | undefined): rdMsg is RoomDataMessage {
+        return rdMsg !== undefined && typeof (rdMsg as RoomDataMessage).model === "number";
+    }
+    private static hasMsgString(msg: AnyMessage | undefined): msg is AnyMessage & { msg: string, nm: undefined | string } {
+        return msg !== undefined && typeof (msg as Message).msg === "string";
+    }
+    private static isTokenInc(msg: AnyMessage | undefined): msg is FCTokenIncResponse {
+        // tslint:disable:no-magic-numbers
+        return msg !== undefined
+            && typeof (msg as FCTokenIncResponse).tokens === "number"
+            && Array.isArray((msg as FCTokenIncResponse).u)
+            && (msg as FCTokenIncResponse).u.length === 3
+            && typeof (msg as FCTokenIncResponse).u[2] === "string"
+            && (msg as FCTokenIncResponse).m.length === 3
+            && typeof (msg as FCTokenIncResponse).m[2] === "string";
+        // tslint:enable:no-magic-numbers
     }
 }

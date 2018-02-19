@@ -1640,8 +1640,8 @@ export class Client extends EventEmitter {
 
     /**
      * Connects to MFC and logs in, just like this.connect(true),
-     * but in this version the resolves when the initial list of
-     * online models has been fully populated.
+     * but in this version the returned promise resolves when the initial
+     * list of online models has been fully populated.
      * If you're logged in as a user with friended models, this will
      * also wait until your friends list is completely loaded.
      *

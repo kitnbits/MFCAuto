@@ -1,4 +1,4 @@
-import { LogLevel, logWithLevel, decodeIfNeeded, httpsGet } from "./Utils";
+import { LogLevel, logWithLevelInternal as logl, decodeIfNeeded, httpsGet } from "./Utils";
 import { EventEmitter } from "events";
 import { STATE, FCVIDEO, FCOPT, FCLEVEL } from "./Constants";
 import { Message, BaseMessage, ModelDetailsMessage, UserDetailsMessage, SessionDetailsMessage, MfcShareDetailsMessage, UnknownJsonField } from "./sMessages";
@@ -254,6 +254,7 @@ export class Model extends EventEmitter {
         if (Model.knownModels.has(id)) {
             return Model.knownModels.get(id);
         } else if (createIfNecessary) {
+            logl(LogLevel.DEBUG, () => `[MODEL] Creating model ${id}`);
             Model.knownModels.set(id, new Model(id));
             return Model.knownModels.get(id);
         }
@@ -381,6 +382,7 @@ export class Model extends EventEmitter {
      * @access private
      */
     public mergeTags(newTags: string[]) {
+        logl(LogLevel.TRACE, () => `[MODEL] mergeTags begin: ${JSON.stringify(this.toCore())}`);
         if (Array.isArray(newTags)) {
             const oldTags = this.tags.slice();
             this.tags = Array.from(new Set(this.tags.concat(newTags))).sort();
@@ -390,6 +392,7 @@ export class Model extends EventEmitter {
             Model.emit("ANY", this, oldTags, this.tags);
             this.processWhens(newTags);
         }
+        logl(LogLevel.TRACE, () => `[MODEL] mergeTags end: ${JSON.stringify(this.toCore())}`);
     }
 
     /**
@@ -406,11 +409,12 @@ export class Model extends EventEmitter {
      */
     public merge(msg: Message): void {
         if (typeof msg !== "object") {
-            logWithLevel(LogLevel.DEBUG, `[MODEL] merge received an invalid message ${this.uid}`);
+            logl(LogLevel.DEBUG, () => `[MODEL] merge received an invalid message ${this.uid}`);
             return;
         } else {
             msg = Object.assign({}, msg);
         }
+        logl(LogLevel.TRACE, () => `[MODEL] merge begin: ${JSON.stringify(this.toCore())}`);
 
         // Find the session being updated by this message
         const previousSession = this.bestSession;
@@ -424,8 +428,23 @@ export class Model extends EventEmitter {
 
         // Merge the updates into the correct session
         assert.notStrictEqual(msg, undefined);
-        assert.ok(msg.lv === undefined || msg.lv === FCLEVEL.MODEL, "Merging a non-model? Non-models need some special casing that is not currently implemented.");
         assert.ok(msg.uid === undefined || this.uid === msg.uid, "Merging a message meant for a different model!: " + JSON.stringify(msg));
+
+        // If we got a level update
+        if (msg.lv !== undefined) {
+            // from a non-model
+            if (msg.lv !== FCLEVEL.MODEL) {
+                assert.notStrictEqual(previousSession.lv, FCLEVEL.MODEL, `A model changed from FCLEVEL.MODEL to ${FCLEVEL[msg.lv]} (${msg.lv})? Should not be possible and indicates a serious bug!`);
+                logl(LogLevel.DEBUG, () => `[MODEL] merge found that ${this.uid} was a level ${previousSession.lv} and not a model, unlinking`);
+
+                // Clear any registered callbacks and remove this member from
+                // the global registry.
+                this.removeAllListeners();
+                this.whenMap.clear();
+                Model.knownModels.delete(this.uid);
+                return;
+            }
+        }
 
         for (const key in msg) {
             // Rip out the sMessage.u|m|s properties and put them on the session at
@@ -545,6 +564,7 @@ export class Model extends EventEmitter {
         }
 
         this.purgeOldSessions();
+        logl(LogLevel.TRACE, () => `[MODEL] merge end: ${JSON.stringify(this.toCore())}`);
     }
 
     /**
@@ -720,21 +740,24 @@ export class Model extends EventEmitter {
             return result;
         } catch (e) {
             const contentsLogLimit = 80;
-            logWithLevel(LogLevel.DEBUG, `[MODEL] getSocialMedia error: ${e} - '${url}'\n\t${rawContents.slice(0, contentsLogLimit)}...`);
+            logl(LogLevel.WARNING, () => `getSocialMedia error: ${e} - '${url}'\n\t${rawContents.slice(0, contentsLogLimit)}...`);
             return undefined;
         }
     }
 
-    public toString(): string {
-        const modelCore = {
+    private toCore(): object {
+        return {
             uid: this.uid,
             nm: this.nm,
             bestSessionId: this.bestSessionId,
             bestSession: this.bestSession,
             tags: this.tags,
         };
+    }
+
+    public toString(): string {
         // tslint:disable-next-line:no-null-keyword no-magic-numbers
-        return JSON.stringify(modelCore, null, 4);
+        return JSON.stringify(this.toCore(), null, 4);
     }
 }
 

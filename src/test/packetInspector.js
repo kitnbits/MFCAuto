@@ -29,11 +29,11 @@ if (fs.existsSync(cred)) {
         pass = data[1];
     }
 }
-// mfc.setLogLevel(mfc.LogLevel.DEBUG);
+mfc.setLogLevel(mfc.LogLevel.WARNING, "packetLog_errors.txt", null);
 let client = new mfc.Client(user, pass);
 
 client.on("ANY", (packet) => {
-    log(packet.toString(), "packetLog", null);
+    log(packet.toString(), "packetLog.txt", null);
 });
 
 client.connectAndWaitForModels().then(() => {

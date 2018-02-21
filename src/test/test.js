@@ -437,8 +437,18 @@ function disconnectClient(client) {
                     });
                 });
                 it("should merge only models", function () {
-                    let nonModels = mfc.Model.findModels((m) => m.bestSession.sid !== 0 && m.bestSession.lv !== 4);
+                    let nonModels = mfc.Model.findModels((m) => m.bestSession.sid !== 0 && m.bestSession.lv !== undefined && m.bestSession.lv !== 4);
                     assert.strictEqual(nonModels.length, 0, `Length: ${nonModels.length}, First element: ${nonModels[0]}`);
+                });
+                it("should unmerge models that turn out to be members", function () {
+                    const fakeModelId = 999999999;
+                    let fakeModel = mfc.Model.getModel(fakeModelId, false);
+                    assert.isUndefined(fakeModel, `The fake model id existed before the test?? ${fakeModel}`);
+                    fakeModel = mfc.Model.getModel(fakeModelId, true);
+                    assert.instanceOf(fakeModel, mfc.Model);
+                    fakeModel.merge({ lv: mfc.FCLEVEL.PREMIUM, nm: "PremiumMember"});
+                    fakeModel = mfc.Model.getModel(fakeModelId, false);
+                    assert.isUndefined(fakeModel, `The member should no longer be tracked as a model ${fakeModel}`);
                 });
                 if (!clientOptions.camYou) { // These are too slow for, or don't apply to CamYou
                     it("should be able to process .when events on one model {slow}", function (done) {

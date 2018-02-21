@@ -1,7 +1,7 @@
 import {AnyMessage, RoomDataMessage, Message, FCTokenIncResponse} from "./sMessages";
 import {Client} from "./Client";
 import {FCTYPE} from "./Constants";
-import {logWithLevel, LogLevel, decodeIfNeeded} from "./Utils";
+import {logWithLevelInternal as logl, LogLevel, decodeIfNeeded} from "./Utils";
 import {Model} from "./Model";
 
 // Forward definitions for the TypeScript compiler
@@ -97,14 +97,15 @@ export class Packet {
                     // These cases don't have a direct mapping between packet and model.
                     // either the mapping doesn't apply or this packet is about many models
                     // potentially (like Tags packets)
-                    id = -1;
                     break;
                 default:
                     // @TODO - Fill in the rest of the cases as necessary
                     // assert.fail(`Tried to retrieve an aboutModel for unknown packet type: ${this.toString()}`);
             }
-            id = Client.toUserId(id);
-            this._aboutModel = Model.getModel(id);
+            if (id !== -1) {
+                id = Client.toUserId(id);
+                this._aboutModel = Model.getModel(id);
+            }
         }
 
         return this._aboutModel;
@@ -127,7 +128,7 @@ export class Packet {
             const emoteCodeIndex = 5;
             let nParseLimit = 0;
 
-            //  This regex is directly from mfccore.js, ParseEmoteOutput.prototype.Parse, with the same letiable name etc
+            //  This regex is directly from mfccore.js, ParseEmoteOutput.prototype.Parse, with the same variable name etc
             const oImgRegExPattern = /#~(e|c|u|ue),(\w+)(\.?)(jpeg|jpg|gif|png)?,([\w\-\:\);\(\]\=\$\?\*]{0,48}),?(\d*),?(\d*)~#/;
 
             let re: RegExpMatchArray | null = [];
@@ -141,7 +142,7 @@ export class Packet {
             return msg;
         } catch (e) {
             // In practice I've never seen this happen, but if it does, it's not serious enough to tear down the whole client...
-            logWithLevel(LogLevel.WARNING, `Error parsing emotes from '${msg}': ${e}`);
+            logl(LogLevel.WARNING, () => `WARNING: Error parsing emotes from '${msg}': ${e}`);
             return undefined;
         }
     }

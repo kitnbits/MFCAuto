@@ -14,9 +14,19 @@ export declare enum LogLevel {
     /** Debug information plus the entire packet log. This is very very verbose. */
     TRACE = 6,
 }
-export declare function setLogLevel(level: LogLevel): void;
-export declare function logWithLevel(level: LogLevel, msg: string, fileRoot?: string, consoleFormatter?: (msg: string) => string): void;
-export declare function log(msg: string, fileRoot?: string, consoleFormatter?: (msg: string) => string | null): void;
+/**
+ * Sets default logging options
+ * @param level Maximum LogLevel for which to log
+ * @param logFileName Default file to log to
+ * @param consoleFormatter Default formatter, usually you should leave this alone except
+ * to possibly specify 'null' to turn off all console logging while leaving a fileRoot
+ * to log only to a file instead
+ */
+export declare function setLogLevel(level: LogLevel, logFileName?: string, consoleFormatter?: ((msg: string) => string) | null): void;
+export declare function logWithLevelInternal(level: LogLevel, msg: string | (() => string), logFileName?: string, consoleFormatter?: ((msg: string) => string) | null): void;
+export declare function logInternal(msg: string | (() => string), logFileName?: string, consoleFormatter?: ((msg: string) => string) | null): void;
+export declare function logWithLevel(level: LogLevel, msg: string | (() => string), logFileName?: string, consoleFormatter?: ((msg: string) => string) | null): void;
+export declare function log(msg: string | (() => string), logFileName?: string, consoleFormatter?: ((msg: string) => string) | null): void;
 export declare function decodeIfNeeded(str: string): string;
 export declare function applyMixins(derivedCtor: Function, baseCtors: Function[]): void;
 export declare function httpGet(url: string): Promise<string>;

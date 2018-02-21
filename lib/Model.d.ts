@@ -371,6 +371,7 @@ export declare class Model extends EventEmitter {
      * object or undefined
      */
     getSocialMedia(): Promise<ModelSocialMedia | undefined>;
+    private toCore();
     toString(): string;
 }
 export declare type ModelEventCallback = (model: Model, before: UnknownJsonField | string[] | boolean, after: UnknownJsonField | string[] | boolean) => void;

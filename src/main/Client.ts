@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import * as net from "net";
-import { LogLevel, logWithLevel, httpsGet } from "./Utils";
+import { LogLevel, logWithLevelInternal as logl, httpsGet } from "./Utils";
 import * as constants from "./Constants";
 import { Model } from "./Model";
 import { Packet } from "./Packet";
@@ -113,7 +113,7 @@ export class Client extends EventEmitter {
         // WebSockets (true) or not (false, the default). For backward compat reasons, we'll still handle
         // that case gracefully. New consumers should move to the options bag syntax.
         if (typeof options === "boolean") {
-            logWithLevel(LogLevel.WARNING, `WARNING: Client useWebSockets as a boolean third constructor parameter is being deprecated, please see the release notes for v4.2.0 for the current way to use a websocket server connection`);
+            logl(LogLevel.WARNING, `WARNING: Client useWebSockets as a boolean third constructor parameter is being deprecated, please see the release notes for v4.2.0 for the current way to use a websocket server connection`);
             options = { useWebSockets: options };
         }
 
@@ -128,7 +128,7 @@ export class Client extends EventEmitter {
         this._streamPosition = 0;
         this._manualDisconnect = false;
         this._state = ClientState.IDLE;
-        logWithLevel(LogLevel.DEBUG, `[CLIENT] Constructed, State: ${this._state}`);
+        logl(LogLevel.DEBUG, () => `[CLIENT] Constructed, State: ${this._state}`);
     }
 
     // #region Instance EventEmitter methods
@@ -166,7 +166,7 @@ export class Client extends EventEmitter {
         return super.removeListener(event, listener);
     }
     public removeAllListeners(event?: ClientEventName) {
-        logWithLevel(LogLevel.WARNING, `WARNING: Using Client.removeAllListeners may break MFCAuto, which internally adds its own listeners at times`);
+        logl(LogLevel.WARNING, `WARNING: Using Client.removeAllListeners may break MFCAuto, which internally adds its own listeners at times`);
         return super.removeAllListeners(event);
     }
     public getMaxListeners() {
@@ -262,25 +262,25 @@ export class Client extends EventEmitter {
      */
     private _packetReceived(packet: Packet): void {
         this._lastPacketTime = Date.now();
-        logWithLevel(LogLevel.TRACE, packet.toString());
+        logl(LogLevel.TRACE, () => packet.toString());
 
         // Special case some packets to update and maintain internal state
         switch (packet.FCType) {
             case constants.FCTYPE.LOGIN:
                 // Store username and session id returned by the login response packet
                 if (packet.nArg1 !== 0) {
-                    logWithLevel(LogLevel.ERROR, `Login failed for user '${this.username}' password '${this.password}'`);
+                    logl(LogLevel.ERROR, `Login failed for user '${this.username}' password '${this.password}'`);
                     throw new Error("Login failed");
                 } else {
                     if (typeof packet.sMessage === "string") {
                         this.sessionId = packet.nTo;
                         this.uid = packet.nArg2;
                         this.username = packet.sMessage;
-                        logWithLevel(LogLevel.INFO, `Login handshake completed. Logged in as '${this.username}' with sessionId ${this.sessionId}`);
+                        logl(LogLevel.INFO, `Login handshake completed. Logged in as '${this.username}' with sessionId ${this.sessionId}`);
 
                         // Start the flow of ROOMDATA updates
                         this.ensureConnected(-1)
-                            .then(() => this.TxCmd(constants.FCTYPE.ROOMDATA, 0, 1, 0))
+                            .then(() => this.TxCmd(constants.FCTYPE.ROOMDATA, 0, constants.FCCHAN.JOIN, 0))
                             .catch(() => { /* Ignore */ });
                     } else {
                         assert.strictEqual(typeof packet.sMessage, "string", `unexpected FCTYPE_LOGIN response format`);
@@ -368,7 +368,7 @@ export class Client extends EventEmitter {
             case constants.FCTYPE.EXTDATA:
                 if (packet.nTo === this.sessionId && packet.nArg2 === constants.FCWOPT.REDIS_JSON) {
                     this._handleExtData(packet.sMessage as messages.ExtDataMessage).catch((reason) => {
-                        logWithLevel(LogLevel.DEBUG, `[CLIENT] _packetReceived caught rejection from _handleExtData: ${reason}`);
+                        logl(LogLevel.WARNING, () => `WARNING: _packetReceived caught rejection from _handleExtData: ${reason}`);
                     });
                 }
                 break;
@@ -410,7 +410,7 @@ export class Client extends EventEmitter {
                                 if (!this._completedModels) {
                                     this._completedModels = true;
                                     if (this._completedTags) {
-                                        logWithLevel(LogLevel.DEBUG, `[CLIENT] emitting: CLIENT_MODELSLOADED`);
+                                        logl(LogLevel.DEBUG, `[CLIENT] emitting: CLIENT_MODELSLOADED`);
                                         this.emit("CLIENT_MODELSLOADED");
                                     }
                                 }
@@ -454,14 +454,14 @@ export class Client extends EventEmitter {
                                 if (!this._completedTags) {
                                     this._completedTags = true;
                                     if (this._completedModels) {
-                                        logWithLevel(LogLevel.DEBUG, `[CLIENT] emitting: CLIENT_MODELSLOADED`);
+                                        logl(LogLevel.DEBUG, `[CLIENT] emitting: CLIENT_MODELSLOADED`);
                                         this.emit("CLIENT_MODELSLOADED");
                                     }
                                 }
                             }
                             break;
                         default:
-                            logWithLevel(LogLevel.DEBUG, `[CLIENT] _packetReceived unhandled list type on MANAGELIST packet: ${nType}`);
+                            logl(LogLevel.WARNING, () => `WARNING: _packetReceived unhandled list type on MANAGELIST packet: ${nType}`);
                     }
                 }
                 break;
@@ -605,8 +605,9 @@ export class Client extends EventEmitter {
      */
     private _readWebSocketPacket(): void {
         const sizeTagLength = 4;
+        const minimumPacketLength = 13; // 4 tag chars + 5 possibly single digit numbers + 4 spaces
 
-        while (this._streamWebSocketBuffer.length > sizeTagLength) {
+        while (this._streamWebSocketBuffer.length >= minimumPacketLength) {
             // Occasionally there is noise in the WebSocket buffer
             // it really should start with 5-6 digits followed by a
             // space. Where the first 4 digits are the size of the
@@ -614,17 +615,24 @@ export class Client extends EventEmitter {
             // are the FCType of the first Packet in the buffer
             // We'll clean it up by shifting the buffer until we
             // find that pattern
-            while (!Client.webSocketNoiseFilter.test(this._streamWebSocketBuffer) && this._streamWebSocketBuffer.length > sizeTagLength) {
+            while (!Client.webSocketNoiseFilter.test(this._streamWebSocketBuffer) && this._streamWebSocketBuffer.length > minimumPacketLength) {
+                // If this happens too often it likely represents a bug
+                // tslint:disable-next-line:no-magic-numbers
+                logl(LogLevel.WARNING, () => `WARNING: _readWebSocketPacket handling noise: '${this._streamWebSocketBuffer.slice(0, 30)}...'`);
                 this._streamWebSocketBuffer = this._streamWebSocketBuffer.slice(1);
             }
-            if (this._streamWebSocketBuffer.length <= sizeTagLength) {
+            if (this._streamWebSocketBuffer.length < minimumPacketLength) {
                 return;
             }
 
             // tslint:disable-next-line:no-magic-numbers
             const messageLength = parseInt(this._streamWebSocketBuffer.slice(0, sizeTagLength), 10);
             if (isNaN(messageLength)) {
-                throw new Error("Invalid packet received! - " + this._streamWebSocketBuffer);
+                // If this packet is invalid we can possibly recover by continuing to shift
+                // the buffer to the next packet. If that doesn't ever line up and work
+                // we should still be able to recover eventually through silence timeouts.
+                logl(LogLevel.WARNING, () => `WARNING: _readWebSocketPacket received invalid packet: '${this._streamWebSocketBuffer}'`);
+                return;
             }
 
             if (this._streamWebSocketBuffer.length < messageLength) {
@@ -680,17 +688,17 @@ export class Client extends EventEmitter {
         if (extData !== undefined && extData.respkey !== undefined) {
             const url = `https://www.${this._baseUrl}/php/FcwExtResp.php?respkey=${extData.respkey}&type=${extData.type}&opts=${extData.opts}&serv=${extData.serv}&`;
 
-            logWithLevel(LogLevel.DEBUG, `[CLIENT] _handleExtData: ${JSON.stringify(extData)} - '${url}'`);
+            logl(LogLevel.TRACE, () => `[CLIENT] _handleExtData: ${JSON.stringify(extData)} - '${url}'`);
             const contentLogLimit = 80;
             let contents = "";
             try {
                 contents = await httpsGet(url);
-                logWithLevel(LogLevel.DEBUG, `[CLIENT] _handleExtData response: ${JSON.stringify(extData)} - '${url}'\n\t${contents.slice(0, contentLogLimit)}...`);
+                logl(LogLevel.TRACE, () => `[CLIENT] _handleExtData response: ${JSON.stringify(extData)} - '${url}'\n\t${contents.slice(0, contentLogLimit)}...`);
                 // tslint:disable-next-line:no-unsafe-any
                 const p = new Packet(extData.msg.type, extData.msg.from, extData.msg.to, extData.msg.arg1, extData.msg.arg2, extData.msglen, JSON.parse(contents));
                 this._packetReceived(p);
             } catch (e) {
-                logWithLevel(LogLevel.DEBUG, `[CLIENT] _handleExtData error: ${e} - ${JSON.stringify(extData)} - '${url}'\n\t${contents.slice(0, contentLogLimit)}...`);
+                logl(LogLevel.WARNING, () => `WARNING: _handleExtData error: ${e} - ${JSON.stringify(extData)} - '${url}'\n\t${contents.slice(0, contentLogLimit)}...`);
             }
         }
     }
@@ -723,7 +731,7 @@ export class Client extends EventEmitter {
             const schema = rdata[0] as Array<string | { [index: string]: Array<string> }>;
             const schemaMap: Array<string | [string, string]> = [];
 
-            logWithLevel(LogLevel.DEBUG, `[CLIENT] _processListData, processing schema: ${JSON.stringify(schema)}`);
+            logl(LogLevel.DEBUG, () => `[CLIENT] _processListData, processing schema: ${JSON.stringify(schema)}`);
 
             if (Array.isArray(schema)) {
                 // Build a map of array index -> property path from the schema
@@ -735,14 +743,14 @@ export class Client extends EventEmitter {
                                     schemaMap.push([key, prop2]);
                                 });
                             } else {
-                                logWithLevel(LogLevel.DEBUG, `[CLIENT] _processListData. N-level deep schemas? ${JSON.stringify(schema)}`);
+                                logl(LogLevel.WARNING, () => `_processListData. N-level deep schemas? ${JSON.stringify(schema)}`);
                             }
                         });
                     } else {
                         schemaMap.push(prop);
                     }
                 });
-                logWithLevel(LogLevel.DEBUG, `[CLIENT] _processListData. Calculated schema map: ${JSON.stringify(schemaMap)}`);
+                logl(LogLevel.DEBUG, () => `[CLIENT] _processListData. Calculated schema map: ${JSON.stringify(schemaMap)}`);
                 rdata.slice(1).forEach((record) => {
                     if (Array.isArray(record)) {
                         // Now apply the schema
@@ -758,10 +766,10 @@ export class Client extends EventEmitter {
                                     }
                                     (msg[path[0]] as messages.UserDetailsMessage | messages.ModelDetailsMessage | messages.SessionDetailsMessage | messages.ExtendedDetailsMessage)[path[1]] = record[i];
                                 } else {
-                                    logWithLevel(LogLevel.DEBUG, `[CLIENT] _processListData. N-level deep schemas? ${JSON.stringify(schema)}`);
+                                    logl(LogLevel.WARNING, () => `WARNING: _processListData. N-level deep schemas? ${JSON.stringify(schema)}`);
                                 }
                             } else {
-                                logWithLevel(LogLevel.DEBUG, `[CLIENT] _processListData. Not enough elements in schema\n\tSchema: ${JSON.stringify(schema)}\n\tSchemaMap: ${JSON.stringify(schemaMap)}\n\tData: ${JSON.stringify(record)}`);
+                                logl(LogLevel.WARNING, () => `WARNING: _processListData. Not enough elements in schema\n\tSchema: ${JSON.stringify(schema)}\n\tSchemaMap: ${JSON.stringify(schemaMap)}\n\tData: ${JSON.stringify(record)}`);
                             }
                         }
 
@@ -771,7 +779,7 @@ export class Client extends EventEmitter {
                     }
                 });
             } else {
-                logWithLevel(LogLevel.DEBUG, `[CLIENT] _processListData. Malformed list data? ${JSON.stringify(schema)} - ${JSON.stringify(rdata)}`);
+                logl(LogLevel.WARNING, () => `WARNING: _processListData. Malformed list data? ${JSON.stringify(schema)} - ${JSON.stringify(rdata)}`);
             }
 
             return result;
@@ -904,7 +912,7 @@ export class Client extends EventEmitter {
                 try {
                     this._serverConfig = JSON.parse(mfcConfig) as ServerConfig;
                 } catch (e) {
-                    logWithLevel(LogLevel.ERROR, `Error parsing serverconfig: '${mfcConfig}'`);
+                    logl(LogLevel.ERROR, `Error parsing serverconfig: '${mfcConfig}'`);
                     throw e;
                 }
             }
@@ -926,7 +934,7 @@ export class Client extends EventEmitter {
      * Most often this should remain undefined.
      */
     public TxCmd(nType: constants.FCTYPE, nTo: number = 0, nArg1: number = 0, nArg2: number = 0, sMsg?: string): void {
-        logWithLevel(LogLevel.DEBUG, `TxCmd Sending - nType: ${constants.FCTYPE[nType]}, nTo: ${nTo}, nArg1: ${nArg1}, nArg2: ${nArg2}, sMsg:${sMsg}`);
+        logl(LogLevel.DEBUG, () => `[CLIENT] TxCmd Sending - nType: ${constants.FCTYPE[nType]}, nTo: ${nTo}, nArg1: ${nArg1}, nArg2: ${nArg2}, sMsg:${sMsg}`);
         if (this._client === undefined) {
             throw new Error("Cannot call TxCmd on a disconnected client");
         }
@@ -1094,7 +1102,7 @@ export class Client extends EventEmitter {
                                     reject(p);
                                     break;
                                 default:
-                                    logWithLevel(LogLevel.DEBUG, `[CLIENT] joinRoom received an unexpected JOINCHAN response ${p.toString()}`);
+                                    logl(LogLevel.WARNING, () => `WARNING: joinRoom received an unexpected JOINCHAN response ${p.toString()}`);
                                     break;
                             }
                             break;
@@ -1103,7 +1111,7 @@ export class Client extends EventEmitter {
                             reject(p);
                             break;
                         default:
-                            logWithLevel(LogLevel.DEBUG, `[CLIENT] joinRoom received the impossible`);
+                            logl(LogLevel.WARNING, `WARNING: joinRoom received the impossible`);
                             reject(p);
                             break;
                     }
@@ -1267,7 +1275,7 @@ export class Client extends EventEmitter {
      *      });
      */
     public async connect(doLogin: boolean = true) {
-        logWithLevel(LogLevel.DEBUG, `[CLIENT] connect(${doLogin}), state: ${ClientState[this._state]}`);
+        logl(LogLevel.DEBUG, () => `[CLIENT] connect(${doLogin}), state: ${ClientState[this._state]}`);
         if (this._state === ClientState.PENDING) {
             // If we're already trying to connect, just wait until that works
             return this.ensureConnected();
@@ -1275,7 +1283,7 @@ export class Client extends EventEmitter {
             // If we're not already trying to connect, start trying
             this._choseToLogIn = doLogin;
             this._state = ClientState.PENDING;
-            logWithLevel(LogLevel.DEBUG, `[CLIENT] State: ${this._state}`);
+            logl(LogLevel.DEBUG, () => `[CLIENT] State: ${this._state}`);
             return new Promise<void>((resolve, reject) => {
                 // Reset any read buffers so we are in a consistent state
                 this._streamBuffer = new Buffer(0);
@@ -1298,7 +1306,7 @@ export class Client extends EventEmitter {
                         // Use good old TCP sockets and the older Flash method of
                         // communicating with the MFC chat servers
                         const chatServer = (this._serverConfig as ServerConfig).chat_servers[Math.floor(Math.random() * (this._serverConfig as ServerConfig).chat_servers.length)];
-                        logWithLevel(LogLevel.INFO, `Connecting to ${this._options.camYou ? "CamYou" : "MyFreeCams:"} chat server ${chatServer}...`);
+                        logl(LogLevel.INFO, `Connecting to () => ${this._options.camYou ? "CamYou" : "MyFreeCams:"} chat server ${chatServer}...`);
 
                         this._client = net.connect(constants.FLASH_PORT, chatServer + `.${this._baseUrl}`, () => { // 'connect' listener
                             // Connecting without logging in is the rarer case, so make the default to log in
@@ -1309,9 +1317,9 @@ export class Client extends EventEmitter {
 
                             this._state = ClientState.ACTIVE;
                             this._currentConnectionStartTime = Date.now();
-                            logWithLevel(LogLevel.DEBUG, `[CLIENT] State: ${this._state}`);
+                            logl(LogLevel.DEBUG, () => `[CLIENT] State: ${this._state}`);
                             Client._currentReconnectSeconds = Client._initialReconnectSeconds;
-                            logWithLevel(LogLevel.DEBUG, `[CLIENT] emitting: CLIENT_CONNECTED, doLogin: ${doLogin}`);
+                            logl(LogLevel.DEBUG, () => `[CLIENT] emitting: CLIENT_CONNECTED, doLogin: ${doLogin}`);
                             this.emit("CLIENT_CONNECTED", doLogin);
                         });
                         this._client.on("data", (data: Buffer) => {
@@ -1331,7 +1339,7 @@ export class Client extends EventEmitter {
                         // communicating with the MFC chat servers
                         const wsSrvs = Object.getOwnPropertyNames((this._serverConfig as ServerConfig).websocket_servers);
                         const chatServer = wsSrvs[Math.floor(Math.random() * wsSrvs.length)];
-                        logWithLevel(LogLevel.INFO, "Connecting to MyFreeCams websocket server " + chatServer + "...");
+                        logl(LogLevel.INFO, "Connecting to MyFreeCams websocket server " + chatServer + "...");
 
                         this._client = new WebSocket(`ws://${chatServer}.${this._baseUrl}:${constants.WEBSOCKET_PORT}/fcsl`, {
                             // protocol: this.serverConfig.websocket_servers[chatServer] as string,
@@ -1349,9 +1357,9 @@ export class Client extends EventEmitter {
 
                             this._state = ClientState.ACTIVE;
                             this._currentConnectionStartTime = Date.now();
-                            logWithLevel(LogLevel.DEBUG, `[CLIENT] State: ${this._state}`);
+                            logl(LogLevel.DEBUG, () => `[CLIENT] State: ${this._state}`);
                             Client._currentReconnectSeconds = Client._initialReconnectSeconds;
-                            logWithLevel(LogLevel.DEBUG, `[CLIENT] emitting: CLIENT_CONNECTED, doLogin: ${doLogin}`);
+                            logl(LogLevel.DEBUG, () => `[CLIENT] emitting: CLIENT_CONNECTED, doLogin: ${doLogin}`);
                             this.emit("CLIENT_CONNECTED", doLogin);
                         });
 
@@ -1393,7 +1401,7 @@ export class Client extends EventEmitter {
      * @access private
      */
     private _keepAlive() {
-        logWithLevel(LogLevel.DEBUG, `[CLIENT] _keepAlive() ${this._state}/${this._currentConnectionStartTime}`);
+        logl(LogLevel.DEBUG, () => `[CLIENT] _keepAlive() ${this._state}/${this._currentConnectionStartTime}`);
         if (this._state === ClientState.ACTIVE && this._currentConnectionStartTime) {
             const now = Date.now();
             const lastPacketDuration = now - (this._lastPacketTime || this._currentConnectionStartTime);
@@ -1402,9 +1410,9 @@ export class Client extends EventEmitter {
             if (lastPacketDuration > (this._options.silenceTimeout as number)
                 || (this._choseToLogIn && lastStatePacketDuration > (this._options.stateSilenceTimeout as number))) {
                 if (this._client !== undefined) {
-                    logWithLevel(LogLevel.DEBUG, `[CLIENT] _keepAlive silence tripped, lastPacket: ${lastPacketDuration}, lastStatePacket: ${lastStatePacketDuration}`);
+                    logl(LogLevel.DEBUG, () => `[CLIENT] _keepAlive silence tripped, lastPacket: ${lastPacketDuration}, lastStatePacket: ${lastStatePacketDuration}`);
                     const msg = `Server has not responded for too long, forcing disconnect`;
-                    logWithLevel(LogLevel.INFO, msg);
+                    logl(LogLevel.INFO, msg);
                     try {
                         if (this._client instanceof net.Socket) {
                             this._client.end();
@@ -1441,7 +1449,7 @@ export class Client extends EventEmitter {
         const typeName = constants.FCTYPE[fctype] as ClientEventName;
         const timer = setTimeout(
             () => {
-                logWithLevel(LogLevel.INFO, msg);
+                logl(LogLevel.INFO, msg);
                 if (this._client !== undefined) {
                     try {
                         if (this._client instanceof net.Socket) {
@@ -1548,7 +1556,7 @@ export class Client extends EventEmitter {
      */
     private _disconnected(reason: string) {
         if (this._state !== ClientState.IDLE) {
-            logWithLevel(LogLevel.INFO, `Disconnected from ${this._baseUrl} - ${reason}`);
+            logl(LogLevel.INFO, `Disconnected from ${this._baseUrl} - ${reason}`);
             this._completedModels = false;
             this._completedTags = false;
             this._client = undefined;
@@ -1561,7 +1569,7 @@ export class Client extends EventEmitter {
             }
             if (this._choseToLogIn === true && Client._connectedClientCount > 0) {
                 Client._connectedClientCount--;
-                logWithLevel(LogLevel.DEBUG, `[CLIENT] connectedClientCount: ${Client._connectedClientCount}`);
+                logl(LogLevel.DEBUG, () => `[CLIENT] connectedClientCount: ${Client._connectedClientCount}`);
             }
             if (this.password === "guest" && this.username.startsWith("Guest")) {
                 // If we had a successful guest login before, we'll have changed
@@ -1571,8 +1579,8 @@ export class Client extends EventEmitter {
             }
             if (!this._manualDisconnect) {
                 this._state = ClientState.PENDING;
-                logWithLevel(LogLevel.DEBUG, `[CLIENT] State: ${this._state}`);
-                logWithLevel(LogLevel.INFO, `Reconnecting in ${Client._currentReconnectSeconds} seconds...`);
+                logl(LogLevel.DEBUG, () => `[CLIENT] State: ${this._state}`);
+                logl(LogLevel.INFO, () => `Reconnecting in ${Client._currentReconnectSeconds} seconds...`);
                 clearTimeout(this._reconnectTimer as NodeJS.Timer);
                 // tslint:disable:align no-magic-numbers
                 this._reconnectTimer = setTimeout(() => {
@@ -1596,10 +1604,10 @@ export class Client extends EventEmitter {
                 }
             } else {
                 this._state = ClientState.IDLE;
-                logWithLevel(LogLevel.DEBUG, `[CLIENT] State: ${this._state}`);
+                logl(LogLevel.DEBUG, () => `[CLIENT] State: ${this._state}`);
                 this._manualDisconnect = false;
             }
-            logWithLevel(LogLevel.DEBUG, `[CLIENT] emitting: CLIENT_DISCONNECTED, _choseToLogIn: ${this._choseToLogIn}`);
+            logl(LogLevel.DEBUG, () => `[CLIENT] emitting: CLIENT_DISCONNECTED, _choseToLogIn: ${this._choseToLogIn}`);
             this.emit("CLIENT_DISCONNECTED", this._choseToLogIn);
             if (Client._connectedClientCount === 0) {
                 Model.reset();
@@ -1617,7 +1625,7 @@ export class Client extends EventEmitter {
         // we shouldn't increment the counter for non-logged-in clients
         Client._connectedClientCount++;
         this._choseToLogIn = true;
-        logWithLevel(LogLevel.DEBUG, `[CLIENT] _connectedClientCount: ${Client._connectedClientCount}`);
+        logl(LogLevel.DEBUG, () => `[CLIENT] _connectedClientCount: ${Client._connectedClientCount}`);
 
         if (username !== undefined) {
             this.username = username;
@@ -1663,7 +1671,7 @@ export class Client extends EventEmitter {
      * @returns A promise that resolves when the disconnect is complete
      */
     public async disconnect(): Promise<void> {
-        logWithLevel(LogLevel.DEBUG, `[CLIENT] disconnect(), state: ${ClientState[this._state]}`);
+        logl(LogLevel.DEBUG, () => `[CLIENT] disconnect(), state: ${ClientState[this._state]}`);
         if (this._state !== ClientState.IDLE) {
             return new Promise<void>((resolve) => {
                 this.emit("CLIENT_MANUAL_DISCONNECT");
@@ -1694,7 +1702,7 @@ export class Client extends EventEmitter {
                 // to be emitted, so we shouldn't wait for that.
                 if (this._state !== ClientState.ACTIVE) {
                     this._state = ClientState.IDLE;
-                    logWithLevel(LogLevel.DEBUG, `[CLIENT] State: ${this._state}`);
+                    logl(LogLevel.DEBUG, () => `[CLIENT] State: ${this._state}`);
                     this._manualDisconnect = false;
                     resolve();
                 }

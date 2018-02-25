@@ -27,45 +27,6 @@ $ npm install ZombieAlex/MFCAuto
 
 ## Examples
 
-### Query MFC for a model's details
-Here we query MFC for details about a specific model, AspenRae in this case, listen for the response and print it out before exiting.
-
-MFC sends several different types of messages.  The type of any particular message is identifiable by a flag on the message that MFC refers to as its FCTYPE.  To see all possible FCTYPEs, check out the full FCTYPE enum in src/main/Constants.ts.
-
-MFCAuto Client instances emit an event every time a message is received, using the FCTYPE of the message as the event name.
-
-In this case, we're sending a request to the server via Client.txCmd() and know that the response to this request will be an FCTYPE.USERNAMELOOKUP message.
-
-```javascript
-var mfc = require("MFCAuto");
-var client = new mfc.Client();
-
-client.on("USERNAMELOOKUP", function(packet){
-    console.log(packet.toString());
-    client.disconnect();
-});
-
-client.connect(false).then(function(){
-    client.TxCmd(mfc.FCTYPE.USERNAMELOOKUP, 0, 20, 0, 'AspenRae');
-});
-```
-
-Note: As of MFCAuto 3.1.0, there is cleaner way to accomplish the same thing as the above:
-
-```javascript
-var mfc = require("MFCAuto");
-var client = new mfc.Client();
-
-client.connect(false)
-    .then(() => client.queryUser("AspenRae"))
-    .then((msg) => {
-        console.log(JSON.stringify(msg));
-        client.disconnect();
-    });
-```
-
----
-
 ### Log all chat in a room
 Here we log into MFC as a guest and wait for a specific model to come online.  Then we join her room and begin logging all the room chat to the console.
 
